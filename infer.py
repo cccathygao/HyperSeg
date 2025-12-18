@@ -18,7 +18,7 @@ from hyperseg.utils import conversation as conversation_lib
 from hyperseg.eval.eval_dataset.eval_datasets import DataCollatorForCOCODatasetV2, RefCOCO_dataset_test
 
 from pycocotools import mask
-
+from detectron2.structures import BoxMode
 
 @dataclass
 class DataArguments:
@@ -132,6 +132,13 @@ def intersectionAndUnionGPU(output, target, K, ignore_index=255):
     area_union = area_output + area_target - area_intersection
     return area_intersection, area_union, area_target
 
+def polygon_to_bbox(polygon):
+    """Convert polygon to bounding box in XYXY format."""
+    if polygon is None or len(polygon) == 0:
+        return [0, 0, 0, 0]
+    x_coords = polygon[:, 0]
+    y_coords = polygon[:, 1]
+    return [float(x_coords.min()), float(y_coords.min()), float(x_coords.max()), float(y_coords.max())]
 
 def process_single_image(model, tokenizer, clip_image_processor, data_collator, dataset, image_id, data_args, device, mask_output_dir):
     """Process a single image and return IoU."""
@@ -162,23 +169,29 @@ def process_single_image(model, tokenizer, clip_image_processor, data_collator, 
     gt_polygon = parse_segmentation_string(gt_answer)
     gt_mask = polygon_to_mask(gt_polygon, img_height, img_width)
     gt_mask_tensor = torch.tensor(gt_mask.astype(np.uint8), device=device)
+    gt_bbox = polygon_to_bbox(gt_polygon)  # ADD THIS LINE
     
     # Create evaluation data entry in the format expected by RefCOCO_dataset_test
     eval_entry = {
-        'new_img_id': image_id,
-        'image_info': {
-            'file_name': image_path,
-            'height': img_height,
-            'width': img_width,
-            'id': image_id
-        },
-        'instruction': [{'raw': prompt}],
-        'anns': [{
-            'segmentation': [gt_polygon.flatten().tolist()],
-            'area': int(gt_mask.sum()),
-            'bbox': [0, 0, img_width, img_height]
-        }]
-    }
+    'new_img_id': image_id,
+    'image_info': {
+        'file_name': image_path,
+        'height': img_height,
+        'width': img_width,
+        'id': image_id
+    },
+    'instruction': [{'sent': prompt}],  # CHANGED 'raw' to 'sent'
+    'anns': [{
+        'segmentation': [gt_polygon.flatten().tolist()],
+        'area': int(gt_mask.sum()),
+        'bbox': gt_bbox,  # CHANGED from [0, 0, img_width, img_height]
+        'bbox_mode': BoxMode.XYXY_ABS,  # ADD THIS LINE
+        'category_id': 1,  # ADD THIS LINE
+        'iscrowd': 0,  # ADD THIS LINE
+        'id': 0,  # ADD THIS LINE
+        'image_id': image_id  # ADD THIS LINE
+    }]
+}
     
     # Create a temporary single-item dataset
     temp_json_path = os.path.join(mask_output_dir, f'temp_{image_id}.json')
@@ -267,13 +280,13 @@ def process_single_image(model, tokenizer, clip_image_processor, data_collator, 
                     )[pred_mask_binary]
                     save_img = cv2.cvtColor(save_img, cv2.COLOR_RGB2BGR)
                     
-                    vis_path = os.path.join(data_args.output_dir, f'{image_id}_masked.jpg')
+                    vis_path = os.path.join(data_args.output_dir, f'{image_id}_masked_img.jpg')
                     cv2.imwrite(vis_path, save_img)
                     print(f"Saved visualization to: {vis_path}")
                     
                     # Save mask image
-                    mask_img_path = os.path.join(data_args.output_dir, f'{image_id}_mask.png')
-                    cv2.imwrite(mask_img_path, pred_mask_binary.astype(np.uint8) * 255)
+                    # mask_img_path = os.path.join(data_args.output_dir, f'{image_id}_mask.png')
+                    # cv2.imwrite(mask_img_path, pred_mask_binary.astype(np.uint8) * 255)
                     
                     # Convert mask to polygon and save JSON
                     pred_polygon = mask_to_polygon(pred_mask_binary)
