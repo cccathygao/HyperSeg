@@ -30,17 +30,17 @@ class DataArguments:
     lora_weight_path: str = ""
     lora_bias: str = "none"
     
-    vision_tower: str = "../pretrained_model/siglip-so400m-patch14-384"
-    vision_tower_mask: str = "../pretrained_model/mask2former/maskformer2_swin_base_IN21k_384_bs16_50ep.pkl"
+    vision_tower: str = "./pretrained_model/siglip-so400m-patch14-384"
+    vision_tower_mask: str = "./pretrained_model/mask2former/maskformer2_swin_base_IN21k_384_bs16_50ep.pkl"
     
     lazy_preprocess: bool = False
     is_multimodal: bool = False
-    image_folder: Optional[str] = field(default='../dataset/coco/train2014')
-    model_path: Optional[str] = field(default="../model/HyperSeg-3B")
-    mask_config: Optional[str] = field(default="../hyperseg/model/mask_decoder/mask_config/maskformer2_swin_base_384_bs16_50ep.yaml")
+    image_folder: Optional[str] = field(default='../referring-segmentation') # './dataset/coco/train2014'
+    model_path: Optional[str] = field(default="./model/HyperSeg-3B")
+    mask_config: Optional[str] = field(default="./hyperseg/model/mask_decoder/mask_config/maskformer2_swin_base_384_bs16_50ep.yaml")
     image_aspect_ratio: str = 'square'
     image_grid_pinpoints: Optional[str] = field(default=None)
-    json_path: str = '../dataset/refcoco_evaluation.json'
+    json_path: str = './dataset/refcoco_evaluation.json'
     model_map_name: str = 'HyperSeg'
     version: str = 'llava_phi'
     output_dir: str = './output_hyperseg'
@@ -55,7 +55,7 @@ class DataArguments:
     # New arguments for batch processing
     image_list: Optional[str] = field(default=None)
     image_id: Optional[str] = field(default=None)
-    dataset_json: str = 'dataset.json'
+    dataset_json: str = '../referring-segmentation/grefcoco_dataset/dataset.json'
 
 
 def parse_segmentation_string(seg_string):
@@ -151,9 +151,11 @@ def process_single_image(model, tokenizer, clip_image_processor, data_collator, 
     print(f"Processing image ID: {image_id}")
     print(f"Prompt: {prompt}")
     print(f"Image path: {image_path}")
+
+    relative_image_path = '../referring-segmentation/' + image_path
     
-    if not os.path.exists(image_path):
-        print(f"Error: File not found at {image_path}")
+    if not os.path.exists(relative_image_path):
+        print(f"Error: File not found at {relative_image_path}")
         return None
     
     # Parse ground truth mask
@@ -255,7 +257,7 @@ def process_single_image(model, tokenizer, clip_image_processor, data_collator, 
                         ).astype(bool)
                     
                     # Save masked image
-                    image_np = cv2.imread(image_path)
+                    image_np = cv2.imread(relative_image_path)
                     image_np = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
                     
                     save_img = image_np.copy()
